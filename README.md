@@ -9,11 +9,29 @@ FastAPI backend for diamond-themed AI image generation, text-to-video, and image
 - `POST /api/v1/images/generate` - generate a diamond-themed image from a prompt
 - `POST /api/v1/videos/text-to-video` - generate a diamond motion video from a prompt
 - `POST /api/v1/videos/image-to-video` - generate a diamond motion video from an uploaded image and prompt
+- `POST /api/v1/music/text-to-music` - generate music from a prompt or lyrics
+- `POST /api/v1/music/enhance-audio` - enhance uploaded audio based on a user prompt
 
 Swagger docs are available at `/docs`.
 
 For image generation, the user prompt is used directly. Diamond styling and
 motion details are only added by the video endpoints.
+
+For music generation, `mode="lyrics"` uses the lyrics directly. `mode="prompt"`
+uses OpenAI to refine the idea into a production-ready music prompt before
+calling ElevenLabs. Duration is estimated automatically from the prompt or lyrics.
+
+Audio enhancement accepts an uploaded audio file plus a required `prompt` form
+field. This endpoint preserves the uploaded voice and is meant for cleanup,
+noise removal, and clarity/professional-quality enhancement. If the prompt asks
+to add background music, the backend generates soft instrumental music with
+ElevenLabs and mixes it under the cleaned voice, preserving the uploaded voice.
+This mixing step requires FFmpeg on the server. It will not convert spoken voice
+into a full song with a different AI singing voice. Use `/api/v1/music/text-to-music`
+when an AI-generated music track is acceptable.
+Common formats such as `.mp3`, `.mpeg`, `.wav`, `.m4a`, `.aac`, `.flac`, `.ogg`,
+`.opus`, `.webm`, `.aiff`, and unknown binary uploads are accepted by the app
+and sent with the best detected content type.
 
 ## Environment
 
@@ -21,6 +39,8 @@ Copy `.env.example` to `.env` and set:
 
 ```env
 GEMINI_API_KEY=
+OPENAI_API_KEY=
+ELEVEN_LABS_API_KEY=
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 AWS_REGION=
@@ -34,4 +54,26 @@ AWS_S3_BUCKET=
 ```bash
 pip install -r requirements.txt
 uvicorn main:app --reload
+```
+
+## Server Dependencies
+
+Audio mixing for `/api/v1/music/enhance-audio` requires FFmpeg on the server or
+VPS. Python packages alone are not enough because `pydub` uses the `ffmpeg`
+binary to decode and export audio.
+
+Ubuntu/Debian VPS:
+
+```bash
+sudo apt update
+sudo apt install -y ffmpeg
+ffmpeg -version
+```
+
+Dockerfile example:
+
+```dockerfile
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 ```
