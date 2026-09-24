@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from Service.config import get_settings
 from Service.image_generation.image_service import router as image_router
 from Service.image_to_video.image_video_service import router as image_video_router
+from Service.music.music_service import router as music_router
 from Service.text_to_video.video_service import router as text_video_router
 
 settings = get_settings()
@@ -23,6 +24,10 @@ tags_metadata = [
     {
         "name": "Image To Video",
         "description": "Generate diamond motion videos from a user image and prompt.",
+    },
+    {
+        "name": "AI Music",
+        "description": "Generate music from prompts or lyrics and enhance uploaded audio.",
     },
 ]
 
@@ -53,6 +58,12 @@ def health():
             "video_model": settings.gemini_video_model,
             "configured": bool(settings.gemini_api_key),
         },
+        "music": {
+            "provider": "eleven_labs",
+            "prompt_refiner": "openai",
+            "configured": bool(settings.eleven_labs_api_key),
+            "openai_configured": bool(settings.openai_api_key),
+        },
         "storage": {
             "provider": "aws_s3",
             "bucket": settings.aws_s3_bucket,
@@ -75,4 +86,9 @@ app.include_router(
     image_video_router,
     prefix="/api/v1/videos",
     tags=["Image To Video"],
+)
+app.include_router(
+    music_router,
+    prefix="/api/v1/music",
+    tags=["AI Music"],
 )
