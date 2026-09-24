@@ -56,6 +56,41 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
+Run on port `4444`:
+
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 4444
+```
+
+## Docker
+
+Build and run with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+The API will be available at:
+
+```text
+http://127.0.0.1:4444/docs
+```
+
+Run in the background:
+
+```bash
+docker compose up --build -d
+```
+
+Stop:
+
+```bash
+docker compose down
+```
+
+The Docker image is multi-stage. The runtime image includes FFmpeg, which is
+required for mixing uploaded voice audio with generated background music.
+
 ## Server Dependencies
 
 Audio mixing for `/api/v1/music/enhance-audio` requires FFmpeg on the server or
