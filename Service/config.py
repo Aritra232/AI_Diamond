@@ -22,7 +22,7 @@ class Settings:
     gemini_api_key: str | None = os.getenv("GEMINI_API_KEY")
     gemini_image_model: str = os.getenv(
         "GEMINI_IMAGE_MODEL",
-        "gemini-3.1-flash-image",
+        "gemini-3-pro-image",
     )
     gemini_video_model: str = os.getenv(
         "GEMINI_VIDEO_MODEL",
