@@ -20,6 +20,35 @@ motion details are only added by the video endpoints.
 For music generation, `mode="lyrics"` uses the lyrics directly. `mode="prompt"`
 uses OpenAI to refine the idea into a production-ready music prompt before
 calling ElevenLabs. Duration is estimated automatically from the prompt or lyrics.
+In prompt mode, the client can optionally provide `style` as a single selected
+style string or an array of selected styles. If no style is selected, the backend
+asks for generated lyrics/vocals without background instruments. If styles are
+selected, the generated song uses vocals plus those selected styles as the
+background arrangement.
+
+Prompt mode without selected styles:
+
+```json
+{
+  "mode": "prompt",
+  "song_name": "Childhood Memories",
+  "prompt": "Create a nostalgic childhood song with warm emotional vocals.",
+  "style": [],
+  "instrumental": false
+}
+```
+
+Prompt mode with selected styles:
+
+```json
+{
+  "mode": "prompt",
+  "song_name": "Childhood Memories",
+  "prompt": "Create a nostalgic childhood song with warm emotional vocals.",
+  "style": ["Piano", "Violin", "Drums"],
+  "instrumental": false
+}
+```
 
 Audio enhancement accepts an uploaded audio file plus a required `prompt` form
 field. This endpoint preserves the uploaded voice and is meant for cleanup,

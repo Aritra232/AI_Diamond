@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from Service.music.music_generation_service import (
+    ALLOWED_PROMPT_STYLES,
     enhance_uploaded_audio,
     generate_music_from_text,
 )
@@ -24,7 +25,10 @@ class TextToMusicRequest(BaseModel):
         None,
         examples=["Shine like a diamond in the night..."],
     )
-    style: str | None = Field(None, examples=["cinematic pop"])
+    style: list[str] | str | None = Field(
+        None,
+        examples=[["Piano", "Violin"]],
+    )
     instrumental: bool = False
 
 
@@ -45,13 +49,32 @@ async def text_to_music(data: TextToMusicRequest):
             detail="lyrics is required when mode is 'lyrics'.",
         )
 
+    selected_styles = _normalize_styles(data.style) if data.mode == "prompt" else []
+    style_text = ", ".join(selected_styles) if data.mode == "prompt" else _style_to_text(data.style)
+    if data.mode == "prompt":
+        invalid_styles = [
+            style
+            for style in selected_styles
+            if style not in ALLOWED_PROMPT_STYLES
+        ]
+        if invalid_styles:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Invalid style selected.",
+                    "invalid_styles": invalid_styles,
+                    "allowed_styles": sorted(ALLOWED_PROMPT_STYLES),
+                },
+            )
+
     return await run_in_threadpool(
         generate_music_from_text,
         mode=data.mode,
         prompt=data.prompt,
         lyrics=data.lyrics,
         song_name=data.song_name,
-        style=data.style,
+        style=style_text,
+        selected_styles=selected_styles,
         instrumental=data.instrumental,
     )
 
@@ -85,3 +108,25 @@ def _detect_content_type(filename: str, uploaded_content_type: str | None) -> st
 
     guessed_content_type, _ = mimetypes.guess_type(filename)
     return guessed_content_type or "application/octet-stream"
+
+
+def _normalize_styles(styles: list[str] | str | None) -> list[str]:
+    if styles is None:
+        return []
+    if isinstance(styles, str):
+        return [styles.strip()] if styles.strip() else []
+
+    normalized = []
+    for style in styles:
+        cleaned = style.strip()
+        if cleaned and cleaned not in normalized:
+            normalized.append(cleaned)
+    return normalized
+
+
+def _style_to_text(style: list[str] | str | None) -> str | None:
+    if style is None:
+        return None
+    if isinstance(style, str):
+        return style
+    return ", ".join(_normalize_styles(style))
