@@ -14,6 +14,35 @@ from Service.storage.s3_service import upload_bytes
 
 ELEVEN_LABS_BASE_URL = "https://api.elevenlabs.io/v1"
 
+ALLOWED_PROMPT_STYLES = {
+    "Acoustic Guitar",
+    "Electric Guitar",
+    "Bass Guitar",
+    "Piano",
+    "Guitar",
+    "Keyboard",
+    "Synthesizer",
+    "Drums",
+    "Percussion",
+    "Tabla",
+    "Violin",
+    "Flute",
+    "Viola",
+    "Cello",
+    "Harp",
+    "Bansuri",
+    "Clarinet",
+    "Oboe",
+    "Trumpet",
+    "Saxophone",
+    "Bass",
+    "Trombone",
+    "Sitar",
+    "Harmonium",
+    "Ukulele",
+    "Accordion",
+}
+
 
 def generate_music_from_text(
     *,
@@ -22,6 +51,7 @@ def generate_music_from_text(
     lyrics: str | None = None,
     song_name: str | None = None,
     style: str | None = None,
+    selected_styles: list[str] | None = None,
     instrumental: bool = False,
 ) -> dict:
     normalized_mode = mode.lower().strip()
@@ -58,6 +88,7 @@ def generate_music_from_text(
             refined["refined_prompt"],
             song_name=song_name,
             style=style,
+            selected_styles=selected_styles or [],
             instrumental=instrumental,
         )
         estimated_duration_seconds = refined["estimated_duration_seconds"]
@@ -82,7 +113,7 @@ def generate_music_from_text(
         "source_type": "text",
         "mode": normalized_mode,
         "song_name": song_name,
-        "style": style,
+        "style": selected_styles or style,
         "instrumental": instrumental,
         "refined_by_openai": refined_by_openai,
         "estimated_duration_seconds": estimated_duration_seconds,
@@ -448,6 +479,7 @@ def _add_music_context(
     *,
     song_name: str | None,
     style: str | None,
+    selected_styles: list[str],
     instrumental: bool,
 ) -> str:
     parts = []
@@ -457,6 +489,16 @@ def _add_music_context(
         parts.append(f"Style: {style}.")
     if instrumental:
         parts.append("Instrumental only, no vocals.")
+    elif selected_styles:
+        parts.append(
+            "Use lead vocals singing generated lyrics with background music built "
+            f"only around these selected styles: {', '.join(selected_styles)}."
+        )
+    else:
+        parts.append(
+            "Use lead vocals singing generated lyrics only. Do not add background "
+            "music, instruments, drums, percussion, or backing track."
+        )
     parts.append(prompt.strip())
     return "\n".join(parts)
 
