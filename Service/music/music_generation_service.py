@@ -99,7 +99,7 @@ def generate_music_from_text(
         prompt=None if composition_plan else final_prompt,
         composition_plan=composition_plan,
         duration_seconds=estimated_duration_seconds,
-        instrumental=instrumental,
+        instrumental=False,
     )
     uploaded = upload_bytes(
         audio_bytes,
@@ -383,9 +383,15 @@ def _build_lyrics_music_prompt(
     if style:
         parts.append(f"Style: {style}.")
     if instrumental:
-        parts.append("Create an instrumental arrangement inspired by these lyrics.")
+        parts.append(
+            "Create a full song using these exact lyrics with lead vocals and "
+            "instrumental background music."
+        )
     else:
-        parts.append("Create a full song using these exact lyrics.")
+        parts.append(
+            "Create a vocal-only song using these exact lyrics. Do not add "
+            "instrumental background music or backing track."
+        )
     parts.append(f"Lyrics:\n{lyrics.strip()}")
     return "\n".join(parts)
 
@@ -401,9 +407,9 @@ def _build_lyrics_composition_plan(
     stanzas = _split_lyrics_into_stanzas(lyrics)
     section_duration_ms = _split_duration(duration_seconds * 1000, len(stanzas))
     positive_styles = _positive_music_styles(style, instrumental)
-    negative_styles = ["instrumental only", "spoken word only", "a cappella only"]
+    negative_styles = ["instrumental only", "spoken word only"]
     if instrumental:
-        negative_styles = ["lead vocals", "sung lyrics"]
+        negative_styles = ["instrumental only", "spoken word only", "a cappella only"]
 
     chunks = []
     for index, stanza in enumerate(stanzas):
@@ -449,18 +455,19 @@ def _positive_music_styles(style: str | None, instrumental: bool) -> list[str]:
     if instrumental:
         styles.extend(
             [
+                "clear emotional lead vocals singing the provided lyrics",
                 "rich background instruments",
                 "polished studio production",
-                "melodic instrumental arrangement",
+                "balanced vocal mix with full instrumental backing",
             ]
         )
     else:
         styles.extend(
             [
                 "clear emotional lead vocals singing the provided lyrics",
-                "rich background instruments supporting the vocals",
-                "polished studio production",
-                "balanced vocal mix with full instrumental backing",
+                "vocal-only performance",
+                "a cappella style",
+                "no instrumental backing track",
             ]
         )
     return styles[:50]
@@ -488,11 +495,23 @@ def _add_music_context(
     if style:
         parts.append(f"Style: {style}.")
     if instrumental:
-        parts.append("Instrumental only, no vocals.")
+        if selected_styles:
+            parts.append(
+                "Use lead vocals singing generated lyrics with instrumental "
+                "background music built only around these selected styles: "
+                f"{', '.join(selected_styles)}."
+            )
+        else:
+            parts.append(
+                "Use lead vocals singing generated lyrics with suitable "
+                "instrumental background music."
+            )
     elif selected_styles:
         parts.append(
-            "Use lead vocals singing generated lyrics with background music built "
-            f"only around these selected styles: {', '.join(selected_styles)}."
+            "Use lead vocals singing generated lyrics only. Do not add the "
+            f"selected styles as instruments: {', '.join(selected_styles)}. "
+            "Do not add background music, instruments, drums, percussion, or "
+            "backing track."
         )
     else:
         parts.append(
