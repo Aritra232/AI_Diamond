@@ -22,9 +22,9 @@ uses OpenAI to refine the idea into a production-ready music prompt before
 calling ElevenLabs. Duration is estimated automatically from the prompt or lyrics.
 In prompt mode, the client can optionally provide `style` as a single selected
 style string or an array of selected styles. If no style is selected, the backend
-asks for generated lyrics/vocals without background instruments. If styles are
-selected, the generated song uses vocals plus those selected styles as the
-background arrangement.
+asks for generated lyrics/vocals without background instruments when
+`instrumental=false`. If `instrumental=true`, the generated song uses vocals plus
+instrumental background music. Selected styles guide that background arrangement.
 
 Prompt mode without selected styles:
 
@@ -46,7 +46,7 @@ Prompt mode with selected styles:
   "song_name": "Childhood Memories",
   "prompt": "Create a nostalgic childhood song with warm emotional vocals.",
   "style": ["Piano", "Violin", "Drums"],
-  "instrumental": false
+  "instrumental": true
 }
 ```
 
