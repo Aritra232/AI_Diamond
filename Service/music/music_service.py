@@ -1,4 +1,5 @@
 import mimetypes
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -103,11 +104,54 @@ async def enhance_audio(
 
 
 def _detect_content_type(filename: str, uploaded_content_type: str | None) -> str:
+    normalized_content_type = _content_type_from_extension(filename)
+    if normalized_content_type:
+        return normalized_content_type
+
     if uploaded_content_type and uploaded_content_type != "application/octet-stream":
-        return uploaded_content_type
+        return _normalize_audio_content_type(uploaded_content_type)
 
     guessed_content_type, _ = mimetypes.guess_type(filename)
-    return guessed_content_type or "application/octet-stream"
+    return _normalize_audio_content_type(guessed_content_type) or "application/octet-stream"
+
+
+def _content_type_from_extension(filename: str) -> str | None:
+    extension = Path(filename).suffix.lower()
+    return {
+        ".mp3": "audio/mpeg",
+        ".mpeg": "audio/mpeg",
+        ".mpga": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".wave": "audio/wav",
+        ".m4a": "audio/mp4",
+        ".mp4": "audio/mp4",
+        ".aac": "audio/aac",
+        ".flac": "audio/flac",
+        ".ogg": "audio/ogg",
+        ".oga": "audio/ogg",
+        ".opus": "audio/ogg",
+        ".webm": "audio/webm",
+        ".aiff": "audio/aiff",
+        ".aif": "audio/aiff",
+        ".amr": "audio/amr",
+        ".wma": "audio/x-ms-wma",
+    }.get(extension)
+
+
+def _normalize_audio_content_type(content_type: str | None) -> str | None:
+    if not content_type:
+        return None
+    lowered = content_type.lower()
+    return {
+        "audio/mp3": "audio/mpeg",
+        "audio/mpeg3": "audio/mpeg",
+        "audio/x-mpeg-3": "audio/mpeg",
+        "audio/x-wav": "audio/wav",
+        "audio/wave": "audio/wav",
+        "audio/x-m4a": "audio/mp4",
+        "audio/mp4a-latm": "audio/mp4",
+        "audio/x-aiff": "audio/aiff",
+    }.get(lowered, content_type)
 
 
 def _normalize_styles(styles: list[str] | str | None) -> list[str]:

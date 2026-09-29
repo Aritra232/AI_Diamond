@@ -60,7 +60,9 @@ into a full song with a different AI singing voice. Use `/api/v1/music/text-to-m
 when an AI-generated music track is acceptable.
 Common formats such as `.mp3`, `.mpeg`, `.wav`, `.m4a`, `.aac`, `.flac`, `.ogg`,
 `.opus`, `.webm`, `.aiff`, and unknown binary uploads are accepted by the app
-and sent with the best detected content type.
+and sent with the best detected content type. When FFmpeg is available, uploaded
+audio is converted to provider-compatible MP3 before calling ElevenLabs, which
+improves support for different audio containers/codecs.
 
 ## Environment
 

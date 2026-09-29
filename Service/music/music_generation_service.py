@@ -291,14 +291,22 @@ def _isolate_audio(
 ) -> tuple[bytes, str]:
     import requests
 
+    provider_audio_bytes, provider_filename, provider_content_type = (
+        _prepare_audio_for_provider(
+            audio_bytes=audio_bytes,
+            filename=filename,
+            content_type=content_type,
+        )
+    )
+
     response = requests.post(
         f"{ELEVEN_LABS_BASE_URL}/audio-isolation",
         headers={"xi-api-key": get_eleven_labs_api_key()},
         files={
             "audio": (
-                filename or "audio.mp3",
-                audio_bytes,
-                content_type or "application/octet-stream",
+                provider_filename,
+                provider_audio_bytes,
+                provider_content_type,
             )
         },
         data={"file_format": "other"},
@@ -306,6 +314,54 @@ def _isolate_audio(
     )
     response.raise_for_status()
     return response.content, response.headers.get("content-type", "audio/mpeg")
+
+
+def _prepare_audio_for_provider(
+    *,
+    audio_bytes: bytes,
+    filename: str,
+    content_type: str,
+) -> tuple[bytes, str, str]:
+    normalized_filename = filename or "audio"
+    normalized_content_type = _normalize_audio_content_type(content_type)
+
+    if normalized_content_type == "audio/mpeg":
+        return audio_bytes, _ensure_extension(normalized_filename, ".mp3"), "audio/mpeg"
+
+    if not shutil.which("ffmpeg"):
+        return audio_bytes, normalized_filename, normalized_content_type
+
+    try:
+        from pydub import AudioSegment
+
+        audio = AudioSegment.from_file(BytesIO(audio_bytes))
+        output = BytesIO()
+        audio.export(output, format="mp3", bitrate="128k")
+        return output.getvalue(), f"{_slugify(normalized_filename)}.mp3", "audio/mpeg"
+    except Exception:
+        return audio_bytes, normalized_filename, normalized_content_type
+
+
+def _normalize_audio_content_type(content_type: str | None) -> str:
+    if not content_type:
+        return "application/octet-stream"
+    lowered = content_type.lower()
+    return {
+        "audio/mp3": "audio/mpeg",
+        "audio/mpeg3": "audio/mpeg",
+        "audio/x-mpeg-3": "audio/mpeg",
+        "audio/x-wav": "audio/wav",
+        "audio/wave": "audio/wav",
+        "audio/x-m4a": "audio/mp4",
+        "audio/mp4a-latm": "audio/mp4",
+        "audio/x-aiff": "audio/aiff",
+    }.get(lowered, content_type)
+
+
+def _ensure_extension(filename: str, extension: str) -> str:
+    if filename.lower().endswith(extension):
+        return filename
+    return f"{_slugify(filename)}{extension}"
 
 
 def _should_add_background_music(prompt: str) -> bool:
