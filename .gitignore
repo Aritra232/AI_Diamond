@@ -84,3 +84,7 @@ temp/
 # API Keys and secrets (extra safety)
 secrets.txt
 api_keys.txt
+
+# PM2 logs
+logs/*
+!logs/.gitkeep

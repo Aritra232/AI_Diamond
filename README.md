@@ -93,34 +93,54 @@ Run on port `4444`:
 uvicorn main:app --reload --host 0.0.0.0 --port 4444
 ```
 
-## Docker
+## Deploy on VPS with PM2
 
-Build and run with Docker Compose:
-
-```bash
-docker compose up --build
-```
-
-The API will be available at:
-
-```text
-http://127.0.0.1:4444/docs
-```
-
-Run in the background:
+Requirements on the VPS: Python 3.10+, `python3-venv`, Node.js + PM2, FFmpeg.
 
 ```bash
-docker compose up --build -d
+# one-time: install system tools (Ubuntu/Debian)
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip ffmpeg
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+sudo npm install -g pm2
 ```
-
-Stop:
 
 ```bash
-docker compose down
+# clone and configure
+git clone <repo-url> AI_Diamond
+cd AI_Diamond
+cp .env.example .env   # fill in the API keys
+
+# create venv, install deps, start/reload with PM2
+bash deploy.sh
+
+# auto-start PM2 after a server reboot (run the command it prints)
+pm2 startup
+pm2 save
 ```
 
-The Docker image is multi-stage. The runtime image includes FFmpeg, which is
-required for mixing uploaded voice audio with generated background music.
+The API will be available at `http://<server-ip>:4444/docs`.
+
+To deploy an update later:
+
+```bash
+git pull
+bash deploy.sh
+```
+
+Useful PM2 commands:
+
+```bash
+pm2 status
+pm2 logs ai-diamond
+pm2 restart ai-diamond
+pm2 stop ai-diamond
+pm2 delete ai-diamond
+```
+
+PM2 settings (port, memory limit, log paths) live in `ecosystem.config.js`.
+Logs are written to `logs/out.log` and `logs/error.log`.
 
 ## Server Dependencies
 
@@ -134,12 +154,4 @@ Ubuntu/Debian VPS:
 sudo apt update
 sudo apt install -y ffmpeg
 ffmpeg -version
-```
-
-Dockerfile example:
-
-```dockerfile
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
 ```
