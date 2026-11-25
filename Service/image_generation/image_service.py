@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException
-from google.genai.errors import ClientError
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from Service.gemini.generation_service import generate_diamond_image
+from Service.gemini.generation_service import (
+    ImageGenerationError,
+    generate_diamond_image,
+)
 
 router = APIRouter()
 
@@ -20,7 +22,12 @@ class ImageRequest(BaseModel):
 
 @router.post(
     "/generate",
-    summary="Generate diamond image",
+    summary="Generate diamond image(s)",
+    description=(
+        "Generates up to 4 images in parallel. If some fail, the successful ones are "
+        "still returned with status 'partial' and the failures listed in 'failed'. "
+        "An error status is returned only when every image failed."
+    ),
     operation_id="generateDiamondImage",
 )
 async def generate_image(data: ImageRequest):
@@ -31,18 +38,12 @@ async def generate_image(data: ImageRequest):
             aspect_ratio=data.aspect_ratio,
             number_of_images=data.number_of_images,
         )
-    except ClientError as exc:
-        if exc.status_code == 429:
-            raise HTTPException(
-                status_code=429,
-                detail=(
-                    "Gemini image generation quota exceeded. Please wait and retry, "
-                    "enable billing/increase quota for the Gemini API project, or "
-                    "use another image model/API key."
-                ),
-            ) from exc
-
+    except ImageGenerationError as exc:
         raise HTTPException(
             status_code=exc.status_code,
-            detail=str(exc),
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "failures": exc.failures,
+            },
         ) from exc

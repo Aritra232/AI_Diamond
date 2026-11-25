@@ -42,6 +42,7 @@ def upload_bytes(
     folder: str,
     filename: str,
     content_type: str,
+    cache_control: str = "public, max-age=31536000, immutable",
 ) -> dict:
     bucket = _require_bucket()
     key = f"{folder.strip('/')}/{uuid4().hex}-{filename}"
@@ -51,6 +52,7 @@ def upload_bytes(
         Key=key,
         Body=content,
         ContentType=content_type,
+        CacheControl=cache_control,
     )
 
     return {

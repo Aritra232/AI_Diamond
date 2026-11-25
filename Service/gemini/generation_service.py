@@ -3,6 +3,7 @@ import mimetypes
 import os
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from google.genai import types
 from Service.config import get_settings
 from Service.gemini.gemini_client import get_client
 from Service.storage.s3_service import upload_bytes, upload_file
+from Service.storage.thumbnail import make_thumbnail
 
 
 DIAMOND_STYLE = """
@@ -35,12 +37,118 @@ def build_video_prompt(user_prompt: str) -> str:
     return f"{DIAMOND_STYLE}\n{DIAMOND_MOTION_STYLE}\nUser direction: {user_prompt}".strip()
 
 
+class ImageGenerationError(Exception):
+    """Raised when *every* requested image failed."""
+
+    def __init__(self, status_code: int, code: str, message: str, failures: list[dict]):
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+        self.failures = failures
+
+
+def _error_status(exc: Exception) -> int | None:
+    for attr in ("status_code", "code"):
+        value = getattr(exc, attr, None)
+        if isinstance(value, int) and 100 <= value < 600:
+            return value
+    return None
+
+
+def _classify_error(exc: Exception) -> tuple[int, str, str]:
+    """Map a provider/storage exception to (http_status, error_code, message)."""
+    status = _error_status(exc)
+
+    if status == 429:
+        return 429, "QUOTA_EXCEEDED", "Image generation quota exceeded. Please wait a moment and retry."
+    if status in (400, 403):
+        return 400, "PROVIDER_REJECTED", f"The image provider rejected this request: {exc}"
+    if status is not None and status >= 500:
+        return 502, "PROVIDER_ERROR", "The image provider had a temporary problem. Please retry."
+    if isinstance(exc, RuntimeError) and "did not return an image" in str(exc):
+        return 502, "NO_IMAGE_RETURNED", "The image provider returned no image for this prompt. Try rewording it."
+    if exc.__class__.__module__.startswith(("botocore", "boto3")):
+        return 502, "STORAGE_ERROR", "Generated image could not be saved to storage."
+    return 500, "GENERATION_FAILED", f"Image generation failed: {exc}"
+
+
+def _is_transient(exc: Exception) -> bool:
+    status = _error_status(exc)
+    if status is not None and status >= 500:
+        return True
+    return isinstance(exc, RuntimeError) and "did not return an image" in str(exc)
+
+
+def _generate_one_image(client, settings, config, prompt: str, index: int) -> dict:
+    """Generate, upload and thumbnail a single image. Raises on failure."""
+    last_exc: Exception | None = None
+    image_bytes = b""
+    mime_type = "image/png"
+
+    for attempt in range(settings.image_retries + 1):
+        try:
+            response = client.models.generate_content(
+                model=settings.gemini_image_model,
+                contents=prompt,
+                config=config,
+            )
+            image_bytes, mime_type = _extract_generated_image(response)
+            last_exc = None
+            break
+        except Exception as exc:  # noqa: BLE001 - classified by caller
+            last_exc = exc
+            if attempt < settings.image_retries and _is_transient(exc):
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            raise
+
+    if last_exc is not None:
+        raise last_exc
+
+    extension = mimetypes.guess_extension(mime_type) or ".png"
+    uploaded = upload_bytes(
+        image_bytes,
+        folder="diamond/images",
+        filename=f"diamond-image-{index}{extension}",
+        content_type=mime_type,
+    )
+    uploaded["index"] = index
+
+    # A thumbnail problem must never fail the image itself.
+    uploaded["thumbnail_url"] = None
+    uploaded["thumbnail_key"] = None
+    try:
+        thumb_bytes, thumb_type, thumb_ext = make_thumbnail(
+            image_bytes,
+            max_px=settings.thumbnail_max_px,
+            quality=settings.thumbnail_quality,
+        )
+        thumb = upload_bytes(
+            thumb_bytes,
+            folder="diamond/images/thumbs",
+            filename=f"diamond-image-{index}-thumb{thumb_ext}",
+            content_type=thumb_type,
+        )
+        uploaded["thumbnail_url"] = thumb["url"]
+        uploaded["thumbnail_key"] = thumb["key"]
+    except Exception as exc:  # noqa: BLE001
+        print(f"[image] thumbnail failed for image {index}: {exc}")
+
+    return uploaded
+
+
 def generate_diamond_image(
     *,
     prompt: str,
     aspect_ratio: str = "1:1",
     number_of_images: int = 1,
 ) -> dict:
+    """Generate ``number_of_images`` images in parallel with partial success.
+
+    Returns ``status="completed"`` when all succeed, ``"partial"`` when some fail.
+    Raises ImageGenerationError only if every image failed.
+    """
     client = get_client()
     settings = get_settings()
     final_prompt = build_image_prompt(prompt)
@@ -52,29 +160,40 @@ def generate_diamond_image(
         ),
     )
 
-    images = []
-    for index in range(1, number_of_images + 1):
-        response = client.models.generate_content(
-            model=settings.gemini_image_model,
-            contents=final_prompt,
-            config=config,
-        )
-        image_bytes, mime_type = _extract_generated_image(response)
-        extension = mimetypes.guess_extension(mime_type) or ".png"
-        uploaded = upload_bytes(
-            image_bytes,
-            folder="diamond/images",
-            filename=f"diamond-image-{index}{extension}",
-            content_type=mime_type,
-        )
-        images.append(uploaded)
+    images: list[dict] = []
+    failed: list[dict] = []
+    workers = max(1, min(number_of_images, settings.image_max_concurrency))
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_generate_one_image, client, settings, config, final_prompt, index): index
+            for index in range(1, number_of_images + 1)
+        }
+        for future, index in futures.items():
+            try:
+                images.append(future.result())
+            except Exception as exc:  # noqa: BLE001
+                status, code, message = _classify_error(exc)
+                print(f"[image] image {index}/{number_of_images} failed ({code}): {exc}")
+                failed.append(
+                    {"index": index, "status_code": status, "code": code, "message": message}
+                )
+
+    images.sort(key=lambda item: item["index"])
+    failed.sort(key=lambda item: item["index"])
+
+    if not images:
+        first = failed[0]
+        raise ImageGenerationError(first["status_code"], first["code"], first["message"], failed)
 
     return {
-        "status": "completed",
+        "status": "completed" if not failed else "partial",
         "prompt": prompt,
         "final_prompt": final_prompt,
         "model": settings.gemini_image_model,
+        "requested": number_of_images,
         "images": images,
+        "failed": failed,
     }
 
 

@@ -28,6 +28,10 @@ class Settings:
         "GEMINI_VIDEO_MODEL",
         "veo-3.1-generate-preview",
     )
+    image_max_concurrency: int = _get_int("IMAGE_MAX_CONCURRENCY", 4)
+    image_retries: int = _get_int("IMAGE_RETRIES", 1)
+    thumbnail_max_px: int = _get_int("THUMBNAIL_MAX_PX", 720)
+    thumbnail_quality: int = _get_int("THUMBNAIL_QUALITY", 80)
     video_poll_interval_seconds: int = _get_int("VIDEO_POLL_INTERVAL_SECONDS", 10)
     video_timeout_seconds: int = _get_int("VIDEO_TIMEOUT_SECONDS", 600)
 

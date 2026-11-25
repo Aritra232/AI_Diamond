@@ -8,3 +8,4 @@ boto3
 openai
 requests
 pydub
+Pillow
